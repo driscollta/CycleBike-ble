@@ -430,8 +430,7 @@ public class BLECadenceService extends Service {
             return false;
         }
         // Previously connected device.  Try to reconnect.
-        if (mBluetoothDeviceAddress != null
-                && address.equals(mBluetoothDeviceAddress)
+        if (address.equals(mBluetoothDeviceAddress)
                 && mBluetoothGatt != null) {
             if (debugBLEService){Log.d(LOGTAG, "Trying to use an existing mBluetoothGatt for connection.");}
             if (mBluetoothGatt.connect()) {

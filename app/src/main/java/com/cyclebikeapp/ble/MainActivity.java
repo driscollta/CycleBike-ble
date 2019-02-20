@@ -411,18 +411,16 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                 myCoordinatorLayout,
                 getString(R.string.open_location_settings),
                 Snackbar.LENGTH_INDEFINITE);
-
         mLocationHelper = new LocationHelper(getApplicationContext());
-
         googlePlayAvailable(context);
         mBLEDeviceManager = new BLEDeviceManager(context);
         // show screen early
         refreshScreen();
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
-            mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"CBSMART");
+            mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"CBSMART:mywakelock");
         }
-        mWakeLock.acquire();
+        mWakeLock.acquire(Constants.TWENTYFOUR_HOURS);
         autoResumeRoute();
         dataBaseAdapter = new BLEDBAdapter(context);
     }// onCreate
@@ -2442,7 +2440,14 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
             GoogleApiAvailability.getInstance().getErrorDialog(MainActivity.this, googlePlayAvailableResponse, 0).show();
         }
     }
-    private void dealWithNewLocation(Location location) {
+    private void dealWithNewLocation(final Location location) {
+        // if location time-stamp is weird, skip the data
+        // also demand "goodEnoughLocationAccuracy" before using the data
+        if (location.getTime() < JAN_1_2000
+                || location.getAccuracy() > goodEnoughLocationAccuracy
+                || Math.abs(System.currentTimeMillis() - location.getTime()) >  TWENTYFOUR_HOURS) {
+            return;
+        }
         myPlace = location;
         myNavRoute.setPrevDOT(myNavRoute.getDOT());
         myNavRoute.setDOT(location.getBearing());
@@ -2473,6 +2478,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         }
         // firstLocation is used to start the track record; it is true after a reset()
         if (gpsFirstLocation) {
+            myBikeStat.setFirstLocSysTimeStamp(System.currentTimeMillis());
             if (debugAppState) Log.i(logtag, "gpsFirstLocation");
             writeAppMessage("", textColorWhite);
             gpsFirstLocation = false;
@@ -3416,7 +3422,10 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 		// open a new tcx file if the previous one is old, we force a new one
 		// thru reset, or loading a new route and clearing data, or the file was
 		// not found when testing last modified date
-		if (old || forceNewTCX_FIT || !myBikeStat.tcxLog.getError().equals("")) {
+        // also demand the location timestamp to be valid
+        boolean locationTimestampOK = myBikeStat.getLastLocation().getTime() > Constants.JAN_1_2000;
+		if ((old || forceNewTCX_FIT || !myBikeStat.tcxLog.getError().equals(""))
+                && locationTimestampOK) {
             if (debugAppState) { Log.i(logtag, "openReopenTCX_FIT() - file old or forceNew"); }
             if (debugOldTCXFile) {
                 Log.i(logtag, "openReopenTCX_FIT() old? " + (old ? " yes" : "no")
@@ -3430,7 +3439,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 			myBikeStat.tcxLog.outFileName = myBikeStat.tcxLog.composeTCXFileName();
 			myBikeStat.tcxLog.openNewTCX(myBikeStat, myNavRoute);
             new ThreadPerTaskExecutor().execute(openNewFitFileBackgroundRunnable);
-		} else {
+		} else if (locationTimestampOK){
 			if (debugAppState) Log.i(logtag, "openReopenTCX_FIT() - file not old & not forceNew");
 			// not old and not forceNewTCX, so re-open tcx & fit
 			// restore outfilefooterlength before re-opening
